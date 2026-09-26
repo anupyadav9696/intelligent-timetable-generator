@@ -1,5 +1,21 @@
 import React, { useMemo, useState } from 'react';
-import { generateValidDemo, generateConflictDemo, fetchSampleEntities } from '../services/api.js';
+import { generateValidDemo, generateConflictDemo, fetchSampleEntities, generateTimetable } from '../services/api.js';
+
+// A small, self-contained example a user can load and tweak. Every division/faculty/
+// classroom/subject needs its own unique "id" string, and each subject references its
+// division and faculty by that id — the same shape the two demo datasets already use.
+const CUSTOM_EXAMPLE = {
+  divisions: [{ id: 'd1', name: 'CSE-A', code: 'CSE-A', studentCount: 40, availableSlots: [] }],
+  faculty: [{ id: 'f1', name: 'Dr. Rao', email: 'rao@college.edu', availableSlots: [] }],
+  classrooms: [
+    { id: 'c1', name: 'Room 101', roomNumber: '101', capacity: 50, roomType: 'classroom', availableSlots: [] },
+  ],
+  subjects: [
+    { id: 's1', name: 'Maths', code: 'MA101', weeklyFrequency: 3, division: 'd1', faculty: 'f1' },
+  ],
+  timeConfig: { days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'], periodsPerDay: 6 },
+};
+const CUSTOM_EXAMPLE_TEXT = JSON.stringify(CUSTOM_EXAMPLE, null, 2);
 import GenerateButton from '../components/GenerateButton.jsx';
 import ConflictBanner from '../components/ConflictBanner.jsx';
 import TimetableGrid from '../components/TimetableGrid.jsx';
@@ -17,9 +33,6 @@ function buildLookup(entities) {
     subject: (id) => subjects.get(String(id))?.name || id,
     faculty: (id) => faculty.get(String(id))?.name || id,
     classroom: (id) => classrooms.get(String(id))?.name || id,
-    divisions,
-    subjects,
-    classrooms,
   };
 }
 
@@ -54,6 +67,8 @@ export default function Dashboard() {
   const [errorMessage, setErrorMessage] = useState('');
   const [view, setView] = useState({ mode: 'division', groupId: null });
   const [activeDemo, setActiveDemo] = useState(null);
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customJson, setCustomJson] = useState(CUSTOM_EXAMPLE_TEXT);
 
   const lookup = useMemo(() => buildLookup(entities), [entities]);
 
@@ -81,6 +96,40 @@ export default function Dashboard() {
       setEntities(sampleEntities);
       const fieldMap = { division: 'divisions', faculty: 'faculty', room: 'classrooms' };
       setView((v) => ({ mode: v.mode, groupId: sampleEntities[fieldMap[v.mode]]?.[0]?.id || null }));
+      setStatus('ready');
+    } catch (err) {
+      setErrorMessage(err?.response?.data?.message || err.message || 'Something went wrong while generating the timetable.');
+      setStatus('error');
+    }
+  }
+
+  async function runCustom() {
+    let payload;
+    try {
+      payload = JSON.parse(customJson);
+    } catch (parseErr) {
+      setErrorMessage(`Your custom dataset isn't valid JSON: ${parseErr.message}`);
+      setStatus('error');
+      return;
+    }
+    setStatus('loading');
+    setErrorMessage('');
+    setActiveDemo('custom');
+    try {
+      const genResult = await generateTimetable(payload);
+      setResult(genResult);
+      // A custom payload already carries full entities (with names), so use it directly
+      // instead of a separate sample-entities fetch.
+      const customEntities = {
+        divisions: payload.divisions || [],
+        subjects: payload.subjects || [],
+        faculty: payload.faculty || [],
+        classrooms: payload.classrooms || [],
+        timeConfig: payload.timeConfig,
+      };
+      setEntities(customEntities);
+      const fieldMap = { division: 'divisions', faculty: 'faculty', room: 'classrooms' };
+      setView((v) => ({ mode: v.mode, groupId: customEntities[fieldMap[v.mode]]?.[0]?.id || null }));
       setStatus('ready');
     } catch (err) {
       setErrorMessage(err?.response?.data?.message || err.message || 'Something went wrong while generating the timetable.');
@@ -128,6 +177,40 @@ export default function Dashboard() {
           />
           {result && result.schedule.length > 0 && (
             <GenerateButton label="Export CSV" onClick={() => downloadCsv(result.schedule, lookup)} variant="secondary" />
+          )}
+        </div>
+
+        <div className="mt-5 border-t border-slate-200 pt-4">
+          <button
+            type="button"
+            onClick={() => setCustomOpen((v) => !v)}
+            className="text-sm font-medium text-brand-700 hover:text-brand-800"
+          >
+            {customOpen ? '▾' : '▸'} Or generate from your own data
+          </button>
+          {customOpen && (
+            <div className="mt-3 space-y-2">
+              <p className="text-xs text-slate-500">
+                Paste divisions/subjects/faculty/classrooms as JSON. Every entity needs its own unique
+                <code className="mx-1 px-1 bg-slate-100 rounded">id</code>
+                string, and each subject references its division and faculty by that id.
+              </p>
+              <textarea
+                value={customJson}
+                onChange={(e) => setCustomJson(e.target.value)}
+                spellCheck={false}
+                rows={12}
+                className="w-full font-mono text-xs rounded-lg border border-slate-300 p-3 focus:outline-none focus:ring-2 focus:ring-brand-500"
+              />
+              <div className="flex flex-wrap gap-3">
+                <GenerateButton
+                  label={status === 'loading' && activeDemo === 'custom' ? 'Generating...' : 'Generate from Custom Data'}
+                  onClick={runCustom}
+                  disabled={status === 'loading'}
+                />
+                <GenerateButton label="Reset to Example" onClick={() => setCustomJson(CUSTOM_EXAMPLE_TEXT)} variant="secondary" />
+              </div>
+            </div>
           )}
         </div>
       </section>

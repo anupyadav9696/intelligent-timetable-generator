@@ -45,11 +45,21 @@ const TimeConfigSchema = z.object({
   timeoutMs: z.number().int().min(1).optional(),
 });
 
+// The CRUD schemas above deliberately have no `id` field (MongoDB assigns _id on create).
+// A custom /generate payload is different: it isn't going through MongoDB, so the caller
+// must supply its own unique `id` for each division/faculty/classroom/subject so that
+// subjects can reference their division/faculty by that id. Without this, every id was
+// silently stripped by Zod and buildEntities() crashed trying to resolve "undefined".
+const DivisionGenerateSchema = DivisionInputSchema.extend({ id: z.string().min(1) });
+const FacultyGenerateSchema = FacultyInputSchema.extend({ id: z.string().min(1) });
+const ClassroomGenerateSchema = ClassroomInputSchema.extend({ id: z.string().min(1) });
+const SubjectGenerateSchema = SubjectInputSchema.extend({ id: z.string().min(1) });
+
 const GenerateRequestSchema = z.object({
-  divisions: z.array(DivisionInputSchema).optional(),
-  subjects: z.array(SubjectInputSchema).optional(),
-  faculty: z.array(FacultyInputSchema).optional(),
-  classrooms: z.array(ClassroomInputSchema).optional(),
+  divisions: z.array(DivisionGenerateSchema).optional(),
+  subjects: z.array(SubjectGenerateSchema).optional(),
+  faculty: z.array(FacultyGenerateSchema).optional(),
+  classrooms: z.array(ClassroomGenerateSchema).optional(),
   useSample: z.enum(['valid', 'conflict']).optional(),
   timeConfig: TimeConfigSchema.optional(),
 });

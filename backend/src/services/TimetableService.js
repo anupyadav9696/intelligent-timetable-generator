@@ -72,6 +72,25 @@ function buildEntities({ divisions, subjects, faculty, classrooms, timeConfig })
 
   const subjectsById = new Map();
   for (const s of subjects) {
+    const divisionId = toId(s.division);
+    const facultyId = toId(s.faculty);
+    // Fail with a clear 400 here rather than crashing deep inside the solver later:
+    // a subject that references a division/faculty id which doesn't exist in this
+    // request is a bad request, not a server bug.
+    if (!divisionsById.has(divisionId)) {
+      const err = new Error(
+        `Subject "${s.name || s.id}" references division id "${s.division}", which is not in the supplied divisions list.`
+      );
+      err.status = 400;
+      throw err;
+    }
+    if (!facultyById.has(facultyId)) {
+      const err = new Error(
+        `Subject "${s.name || s.id}" references faculty id "${s.faculty}", which is not in the supplied faculty list.`
+      );
+      err.status = 400;
+      throw err;
+    }
     subjectsById.set(toId(s.id), {
       id: toId(s.id),
       name: s.name,
@@ -79,8 +98,8 @@ function buildEntities({ divisions, subjects, faculty, classrooms, timeConfig })
       weeklyFrequency: s.weeklyFrequency,
       requiresLab: !!s.requiresLab,
       duration: s.duration || 1,
-      divisionId: toId(s.division),
-      facultyId: toId(s.faculty),
+      divisionId,
+      facultyId,
     });
   }
 
